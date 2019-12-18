@@ -7,6 +7,7 @@ Figure 2 - Behavior is represented in the brain
 """
 import numpy as np
 import matplotlib as mpl
+import os
 #
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -14,6 +15,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 #
 #import makePlots as mp
 import prediction.dataHandler as dh
+from prediction import userTracker
 # deliberate import all!
 from prediction.stylesheet import *
 from scipy.stats import pearsonr
@@ -33,10 +35,11 @@ fs = mpl.rcParams["font.size"]
 data = {}
 for typ in ['AML32', 'AML18', 'AML175', 'AML70']:
     for condition in ['moving', 'chip']:# ['moving', 'immobilized', 'chip']:
-        folder = '../../{}_{}/'.format(typ, condition)
-        dataLog = '../../{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition)
-        outLoc = "../../Analysis/{}_{}_results.hdf5".format(typ, condition)
-        outLocData = "../../Analysis/{}_{}.hdf5".format(typ, condition)
+        path = userTracker.dataPath()
+        folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+        dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+        outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+        outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
         
         try:
             # load multiple datasets
@@ -217,6 +220,7 @@ moveAxes(ax7, 'scaley', 0.03)
 moveAxes(ax8, 'scaley', 0.03)
 ax7.text(-140, 0, 'Velocity\n(rad/s)', color = R1, rotation=0, verticalalignment='center', fontsize=12, multialignment='center')
 ax8.text(-160, 0, 'Body \n curvature \n(a.u.)', color = B1, rotation=0, verticalalignment='center', fontsize=12, multialignment='center')
+
 
 # move axis to the right
 ax7.yaxis.tick_right()
@@ -492,6 +496,11 @@ axVb.set_xticks([-1, x0, x0+1.75,x0+2.5,-1+toffset ,  x0+toffset, x0+1.75+toffse
 axVb.set_xticklabels(['PCA', 'SLM', 'SN','Ctrl','PCA', 'SLM', 'SN', 'Ctrl'], fontsize=12, rotation=45)
 plt.show()
 # get all the weights for the different samples
+
+
+import prediction.provenance as prov
+prov.stamp(axV,.1,.3)
+
 
 #for typ, colors, ax in zip(['AML32', 'AML18'], [colorsExp, colorCtrl], [ax11, ax12]):
 #    for condition in ['moving', 'immobilized']:

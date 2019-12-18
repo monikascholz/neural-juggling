@@ -6,6 +6,17 @@ sandboxing
 @author: mscholz
 """
 
+import os
+from prediction import userTracker
+path = userTracker.dataPath()
+print path
+folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
+print folder
+
+
 import numpy as np
 #import fourier_vec as fourier
 import matplotlib.pyplot as plt

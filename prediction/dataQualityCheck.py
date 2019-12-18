@@ -4,10 +4,12 @@ import matplotlib as mpl
 import numpy as np
 import matplotlib.pylab as plt
 import h5py
+import os
 # custom modules 
 import dataHandler as dh
 import makePlots as mp
 import dimReduction as dr
+from prediction import userTracker
 #
 mpl.rcParams['interactive']  = False
 ###############################################    
@@ -16,17 +18,18 @@ mpl.rcParams['interactive']  = False
 #
 ###############################################
 typ = 'AML32' # possible values AML32, AML18, AML70
-condition = 'immobilized'# # Moving, immobilized, chip
+condition = 'moving'# # Moving, immobilized, chip
 first = True # if true, create new HDF5 file
 ###############################################    
 # 
 #    load data into dictionary
 #
 ##############################################
-folder = '../{}_{}/'.format(typ, condition)
-dataLog = '../{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition)
-outLoc = "../Analysis/{}_{}_results.hdf5".format(typ, condition)
-outLocData = "../Analysis/{}_{}.hdf5".format(typ, condition)
+path = userTracker.dataPath()
+folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
 
 # data parameters
 dataPars = {'medianWindow':50, # smooth eigenworms with gauss filter of that size, must be odd

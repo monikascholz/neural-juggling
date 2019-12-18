@@ -1268,7 +1268,7 @@ def predictNeuralDynamicsfromBehavior(data,  splits, pars):
     train, test = splits[label]['Train'], splits[label]['Test']
     # create dimensionality-reduced behavior - pca with 10 eigenworms
     cl = data['CL']
-    eigenworms = dh.loadEigenBasis(filename = 'utility/Eigenworms.dat', nComp=4, new=True)
+    eigenworms = dh.loadEigenBasis(filename = '../utility/Eigenworms.dat', nComp=4, new=True)
     pcsNew, meanAngle, lengths, refPoint = dh.calculateEigenwormsFromCL(cl, eigenworms)
     behavior = pcsNew.T
     # nevermind, use the behaviors we use for lasso instead

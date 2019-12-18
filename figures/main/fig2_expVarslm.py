@@ -7,6 +7,7 @@ Figure 2 - Behavior is represented in the brain
 """
 import numpy as np
 import matplotlib as mpl
+import os
 #
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -14,6 +15,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 #
 #import makePlots as mp
 from prediction import dataHandler as dh
+from prediction import userTracker
 # deliberate import all!
 from prediction.stylesheet import *
 from scipy.stats import pearsonr
@@ -34,10 +36,11 @@ fs = mpl.rcParams["font.size"]
 data = {}
 for typ in ['AML32', 'AML18', 'AML175', 'AML70']:
     for condition in ['moving', 'chip']:# ['moving', 'immobilized', 'chip']:
-        folder = '../../{}_{}/'.format(typ, condition)
-        dataLog = '../../{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition)
-        outLoc = "../../Analysis/{}_{}_results.hdf5".format(typ, condition)
-        outLocData = "../../Analysis/{}_{}.hdf5".format(typ, condition)
+        path = userTracker.dataPath()
+        folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+        dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+        outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+        outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
         
         try:
             # load multiple datasets

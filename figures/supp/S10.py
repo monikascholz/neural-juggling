@@ -23,7 +23,7 @@ from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, set_link_colo
 #import svgutils as svg
 #
 import prediction.dataHandler as dh
-
+from prediction import userTracker
 from prediction.stylesheet import *
 from prediction.pycpd import deformable_registration, rigid_registration
 
@@ -59,11 +59,12 @@ def registerWorms(Xref, X, dim=3):
 data = {}
 for typ in ['AML32', 'AML18', 'AML70', 'AML175']:
     for condition in ['moving', 'chip']:# ['moving', 'immobilized', 'chip']:
-        folder = '../../{}_{}/'.format(typ, condition)
-        dataLog = '../../{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition)
-        outLoc = "../../Analysis/{}_{}_results.hdf5".format(typ, condition)
-        outLocData = "../../Analysis/{}_{}.hdf5".format(typ, condition)
-        
+        path = userTracker.dataPath()
+        folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+        dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+        outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+        outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
+            
         try:
             # load multiple datasets
             dataSets = dh.loadDictFromHDF(outLocData)

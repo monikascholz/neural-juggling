@@ -7,8 +7,8 @@ write out a table of all datasets with metainformation.
 import dataHandler as dh
 import numpy as np
 import pprint
-
-
+import os
+from prediction import userTracker
 ################################################
 #
 # grab all the data we will need
@@ -50,10 +50,11 @@ print "Condition, Strain, Unique Identifier,	Indicator,Background,Arena,Duration
 
 for typ in ['Special', 'AML32', 'AML18', 'AML175', 'AML70']:
     for condition in ['transition','immobilized','moving', 'chip']:
-        folder = '{}_{}/'.format(typ, condition)
-        dataLog = '{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition)
-        outLoc = "Analysis/{}_{}_results.hdf5".format(typ, condition)
-        outLocData = "Analysis/{}_{}.hdf5".format(typ, condition)
+        path = userTracker.dataPath()
+        folder = os.path.join(path, '{}_{}/'.format(typ, condition))
+        dataLog = os.path.join(path,'{0}_{1}/{0}_{1}_datasets.txt'.format(typ, condition))
+        outLoc = os.path.join(path, 'Analysis/{}_{}_results.hdf5'.format(typ, condition))
+        outLocData = os.path.join(path,'/Analysis/{}_{}.hdf5'.format(typ, condition))
         #print strains[typ], conditions[condition]
         try:
             # load multiple datasets

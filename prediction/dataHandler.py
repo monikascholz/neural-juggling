@@ -4,6 +4,7 @@ Created on Fri Nov 10 15:41:10 2017
 load and compare multiple data sets for behavior prediction.
 @author: monika scholz
 """
+from __future__ import division # make division give you floats, as is standard for python3
 import scipy.io
 import os
 import numpy as np
@@ -257,8 +258,11 @@ def transformEigenworms(pcs, dataPars):
     for pcindex, pc in enumerate(pcs):
         # mask nans by linearly interpolating
         mask = np.isnan(pc1)
+
         if np.any(mask):
             pc[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), pc1[~mask])
+            import warnings
+            warnings.warn('Found ' + str(np.sum(mask)) + 'NaNs that are being interpolated over in the behavior PC1, PC2 or PC3.')
         pcs[pcindex] = pc
         
     theta = np.unwrap(np.arctan2(pcs[2], pcs[1]))
@@ -318,7 +322,8 @@ def preprocessNeuralData(R, G, dataPars):
     
     # smooth with GCamp6 halftime = 1s
     RS =np.array([gaussian_filter1d(line,dataPars['windowGCamp']) for line in R])       
-    GS =np.array([gaussian_filter1d(line,dataPars['windowGCamp']) for line in G])       
+    GS =np.array([gaussian_filter1d(line,dataPars['windowGCamp']) for line in G])
+    print("windowGCaMP:", str(dataPars['windowGCamp']))
 #    YR = GS/RS
     
 ##    meansubtract = False#False#True
@@ -381,10 +386,55 @@ def loadData(folder, dataPars, ew=1):
     ethomask = np.isnan(etho)
     if np.any(ethomask):
         etho[ethomask] = 0
-    
+
+    rRaw=np.array(data['rRaw'])[:,:len(np.array(data['hasPointsTime']))]
+    gRaw=np.array(data['gRaw'])[:,:len(np.array(data['hasPointsTime']))]
+
+    rphotocorr = np.array(data['rPhotoCorr'])[:, :len(np.array(data['hasPointsTime']))]
+    gphotocorr = np.array(data['gPhotoCorr'])[:, :len(np.array(data['hasPointsTime']))]
+
     #load neural data
-    R = np.array(data['rPhotoCorr'])[:,:len(np.array(data['hasPointsTime']))]
-    G = np.array(data['gPhotoCorr'])[:,:len(np.array(data['hasPointsTime']))]
+    debug = True
+    original = False
+    if original:
+        R = np.copy(rphotocorr)
+        G = np.copy(gphotocorr)
+    else:
+        R = rRaw.copy()
+        G = gRaw.copy()
+        vps = dataPars['volumeAcquisitionRate']
+
+        #remove outliers with a sliding window of 40 volumes (or 6 seconds)
+        R = nanOutliers(R, np.round(2*3.3*vps).astype(int))[0]
+        G = nanOutliers(G, np.round(2*3.3*vps).astype(int))[0]
+
+        R = correctPhotobleaching(R, vps)
+        G = correctPhotobleaching(G, vps)
+
+        if debug:
+
+            nplots=2
+            chosen = np.round(np.random.rand(nplots)*R.shape[0]).astype(int)
+            import matplotlib.pyplot as plt
+            plt.cla()
+            plt.subplot(nplots, 1, 1,)
+            plt.plot(G[chosen[0],:],'g', label='gRaw w/ python photocorrection')
+            plt.plot(gphotocorr[chosen[0],:],'b', label='gPhotoCorr via matlab')
+            plt.title('Comparsion of Green Channel photocorrection methods for neuron ' + str(chosen[0]))
+            plt.legend()
+
+            plt.subplot(nplots,1,2)
+            plt.plot(R[chosen[0], :], 'r', label='rRaw w/ python photocorrection')
+            plt.plot(rphotocorr[chosen[0], :], 'm', label='rPhotoCorr via matlab')
+            plt.title('Comparsion of Red Channel photocorrection methods for neuron ' + str(chosen[0]))
+            plt.legend()
+            plt.show()
+
+
+
+
+
+
     #
     Ratio = np.array(data['Ratio2'])[:,:len(np.array(data['hasPointsTime']))]
     Y, dR, GS, RS, RM = preprocessNeuralData(R, G, dataPars)
@@ -556,4 +606,225 @@ def loadDictFromHDF(filePath):
                         
     f.close()
     return d
+
+def correctPhotobleaching(raw, vps=6):
+    """ Apply photobleaching correction to raw signals, works on a whole heatmap of neurons
+
+    Use Xiaowen's photobleaching correction method which fits an exponential and then divides it off
+    Note we are following along with the explicit noise model from Xiaowen's Phys Rev E paper Eq 1 page 3
+    Chen, Randi, Leifer and Bialek, Phys Rev E 2019
+
+    takes raw neural signals N (rows) neruons x T (cols) time points
+    we require that each neuron is a row and that there are more time points than rows
+
+    """
+
+    # Make sure the data we are getting makes sense.
+    assert raw.ndim <= 2, "raw fluorescent traces passed to correctPhotobleaching() have the wrong number of dimensions"
+
+    if raw.ndim == 2:
+        assert raw.shape[1] > raw.shape[
+            0], "raw fluorescent traces passed to correctPhotobleaching() have the wrong size! Perhaps it is transposed?"
+
+    window_s = 12.6  # time of median filter window in seconds
+    medfilt_window = np.int(np.ceil(window_s * vps / 2.) * 2 + 1)  # make it an odd number of frames
+
+    photoCorr = np.zeros_like(raw)  # initialize photoCorr
+
+    debug = False
+
+    performMedfilt  = True
+
+
+
+    if raw.ndim == 2:
+        if performMedfilt:
+            # perform median filtering (Nan friendly)
+            from scipy.signal import medfilt
+            smoothed = medfilt(raw, [1, medfilt_window])
+        else:
+            smoothed = raw.copy()
+
+        N_neurons = raw.shape[0]
+
+        # initialize the exponential fit parameter outputs
+        popt = np.zeros([N_neurons, 3])
+        pcov = np.zeros([3, 3, N_neurons])
+
+        # Exponential Fit on each neuron
+        for row in np.arange(N_neurons):
+            popt[row, :], pcov[:, :, row], xVals = fitPhotobleaching(smoothed[row, :], vps)
+            photoCorr[row, :] = popt[row, 0] * raw[row, :] / expfunc(xVals, *popt[row, :])
+
+            showPlots = False
+            if debug:
+                if np.random.rand() > 0.85:
+                    showPlots = True
+
+            if showPlots:
+                import matplotlib.pyplot as plt
+                plt.plot(xVals, raw[row, :], 'b-', label=['raw, row: '+np.str(row)])
+                plt.plot(xVals, photoCorr[row, :], "r-",
+                         label=['photoCorr, row: '+np.str(row)])
+                plt.xlabel('Time (s)')
+                plt.ylabel('ActivityTrace')
+                plt.title('correctPhotobleaching()')
+                plt.legend()
+                plt.show()
+
+    elif raw.ndim == 1:
+        smoothed = medfilt(raw, medfilt_window)
+        popt, pcov, xVals = fitPhotobleaching(smoothed, vps)
+        photoCorr= popt[0] * raw / expfunc(xVals, *popt)
+
+    else:
+        raise ValueError('The  number dimensions of the data in correctPhotobleaching are not 1 or 2')
+
+    return photoCorr
+
+
+
+def fitPhotobleaching(activityTrace, vps):
+    """"
+    Fit an exponential.
+
+    Accepts a single neuron's activity trace.
+
+    Use Xiaowen's photobleaching correction method which fits an exponential and then divides it off
+    Note we are following along with the explicit noise model from Xiaowen's Phys Rev E paper Eq 1 page 3
+    Chen, Randi, Leifer and Bialek, Phys Rev E 2019
+
+
+    """
+    assert activityTrace.ndim == 1, "fitPhotobleaching only works on single neuron traces"
+
+    # Now we will fit an exponential, following along with the tuotiral here:
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html
+    xVals = np.array(np.arange(activityTrace.shape[-1])) / np.float(vps)
+
+    # Identify just the data that is not a NaN
+    nonNaNs = np.logical_not(np.isnan(activityTrace))
+
+    from scipy.optimize import curve_fit
+
+    # set up some bounds on our exponential fitting parameter, y=a*exp(bx)+c
+    num_recordingLengths = 8 # the timescale of exponential decay should not be more than eight recording lengths long
+    # because otherwise we could have recorded for way longer!!
+
+    #Scale the activity trace to somethign around one.
+    scaleFactor=np.nanmean(activityTrace)
+    activityTrace=activityTrace/scaleFactor
+
+    bounds = ([0, 1 / (num_recordingLengths * np.nanmax(xVals)), 0],  # lower bounds
+              [np.nanmax(activityTrace[nonNaNs])*1.5, 0.5, 2 * np.nanmean(activityTrace)])  # upper bound
+
+    # as a first guess, a is half the max, b is 1/(half the length of the recording), and c is the average
+    popt_guess = [np.nanmax(activityTrace) / 2, 2 / np.nanmax(xVals), np.nanmean(activityTrace)]
+
+    popt, pcov = curve_fit(expfunc, xVals[nonNaNs], activityTrace[nonNaNs], p0=popt_guess,
+                           bounds=bounds)
+    debug = False
+    if np.logical_and(np.random.rand() > 0.9, debug):
+        showPlots = True
+    else:
+        showPlots = False
+
+    if showPlots:
+        import matplotlib.pyplot as plt
+        plt.cla()
+        plt.plot(xVals, activityTrace, 'b-', label='data')
+        plt.plot(xVals, expfunc(xVals, *popt), "r-",
+                 label='fit a*exp(-b*x)+c: a=%5.3f, b=%5.3f, c=%5.3f' % tuple(popt))
+        plt.xlabel('Time (s)')
+        plt.ylabel('ActivityTrace')
+        plt.legend()
+
+    ## Now we want to inspect our fit, find values that are clear outliers, and refit while excluding those
+    residual = activityTrace - expfunc(xVals, *popt)  # its ok to have nan's here
+
+    nSigmas = 3  # we want to exclude points that are three standard deviations away from the fit
+
+    # Make a new mask that excludes the outliers
+    excOutliers = np.copy(nonNaNs)
+    excOutliers[(np.abs(residual) > (nSigmas * np.nanstd(residual)))] = False
+
+    # Refit excluding the outliers, use the previous fit as initial guess
+    # note we relax the bounds here a bit
+
+    try:
+        popt, pcov = curve_fit(expfunc, xVals[excOutliers], activityTrace[excOutliers], p0=popt,bounds=bounds)
+    except:
+        popt, pcov = curve_fit(expfunc, xVals[excOutliers], activityTrace[excOutliers], p0=popt)
+
+    if showPlots:
+        import matplotlib.pyplot as plt
+        plt.plot(xVals, expfunc(xVals, *popt), 'y-',
+                 label='excluding outliers fit a*exp(-b*x)+c: a=%5.3f, b=%5.3f, c=%5.3f' % tuple(popt))
+        plt.legend()
+
+    #rescale the amplitude, a, back to full size
+    popt[0]=scaleFactor*popt[0]
+
+    #rescale the c parameter
+    popt[2]=scaleFactor*popt[2]
+    return popt, pcov, xVals
+
+
+def expfunc(x, a, b, c):
+    # type: (xVals, a, b, c) -> yVals
+    return a * np.exp(-b * x) + c
+
+
+
+
+
+from skimage.util import view_as_windows
+
+def nanOutliers(data, window_size, n_sigmas=3):
+    """using a Hampel filter to detect outliers and replace them with nans.
+
+        This is based on Xiaowen Chen's MATLAB routine for preprocessing from her Phys Rev E 2019 paper.
+
+    The algorithm assumes the underlying series should be Gaussian. This could be changed by changing the k parameter.
+    Data can contain nans, these will be ignored for median calculation.
+    data: (M, N) array of M timeseries with N samples each.
+    windowsize: integer. This is half of the typical implementation.
+    n_sigmas: float or integer
+    """
+    # deal with N = 1 timeseries to conform to (M=1,N) shape
+    if len(data.shape)<2:
+        data = np.reshape(data, (1,-1))
+    k = 1.4826 # scale factor for Gaussian distribution
+    M, N = data.shape # store data shape for quick use below
+    # pad array to achieve at least the same size as original
+    paddata = np.pad(data.copy(), pad_width= [(0,0),(window_size//2,window_size//2)], \
+                     constant_values=(np.median(data)), mode = 'constant')
+    # we use strides to create rolling windows. Not nice in memory, but good in performance.
+    # because its meant for images, it creates some empty axes of size 1.
+    tmpdata = view_as_windows(paddata, (1,window_size))
+    # crop data to center
+    tmpdata = tmpdata[:M, :N]
+    x0N = np.nanmedian(tmpdata, axis = (-1, -2))
+    s0N =k * np.nanmedian(np.abs(tmpdata - x0N[:,:,np.newaxis, np.newaxis]), axis = (-1,-2))
+    # hampel condition
+    hampel = (np.abs(data-x0N) - (n_sigmas*s0N))
+    indices = np.where(hampel>0)
+    # cast to float to allow nans in output data
+    newData = np.array(data, dtype=float)
+    newData[indices] = np.nan
+
+    Debug = False
+    if Debug:
+        chosen = np.squeeze( np.round(np.random.rand(1) * M-1).astype(int))
+        import matplotlib.pyplot as plt
+        plt.cla()
+        plt.plot(data[chosen, :],'r')
+        plt.plot(newData[chosen, :],'b')
+        plt.title('nanOutlier(), neuron: ' +str(chosen))
+        plt.show()
+
+    return newData, indices
+
+
+
 
